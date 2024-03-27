@@ -1,5 +1,6 @@
 import time
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import tqdm
@@ -14,7 +15,10 @@ class RoPE1D(nn.Module):
 
         # self.register_buffer(name="theta", tensor=base ** (-2 * torch.arange(dim // 2) / dim).unsqueeze(0))
         # -2 * torch.arange(dim // 2) == torch.arange(0, dim, 2)[: (dim // 2)]
-        self.register_buffer(name="theta", tensor=1 / (base ** (torch.arange(0, dim, 2)[: (dim // 2)] / dim)))
+        self.register_buffer("theta", base ** (-torch.arange(0, dim, 2)[: (dim // 2)] / dim))
+
+    def forward(self, x):
+        return self.forward_llama(x)
 
     def forward_v1(self, x):
         B, L, D = x.shape
@@ -62,8 +66,8 @@ class RoPE1D(nn.Module):
         sin_pos = theta.sin()
         theta = torch.stack([cos_pos, -sin_pos, sin_pos, cos_pos], dim=-1).reshape(L, D // 2, 2, 2)
         x = x.reshape(B, L, D // 2, 2)  # [x0, x1], [x2, x3], ...
-        x = torch.einsum('ldxy, bldy -> bldx', theta, x)
-        return x.flatten(3)
+        x = torch.einsum("ldxy, bldy -> bldx", theta, x)
+        return x.flatten(2)
 
     def forward_llama(self, x):
         B, L, D = x.shape
@@ -72,16 +76,16 @@ class RoPE1D(nn.Module):
         theta = torch.outer(token_idx, self.theta)  # L,D//2
 
         # 1*cos(theta)+1*sin(theta)j
-        freqs_cis = torch.polar(torch.ones_like(theta), theta)
-        freqs_cis = freqs_cis.view(1, L, D // 2)  # 1,L,D//2 cos(theta0)+sin(theta0)j
+        theta = torch.polar(torch.ones_like(theta), theta)
+        theta = theta.view(1, L, D // 2)  # 1,L,D//2 cos(theta0)+sin(theta0)j
 
         # the input is expected to have the last dimension of size 2. => [x, y]->(x+yj)
         # for torch.float64 and torch.float32
         x_ = torch.view_as_complex(x.float().reshape(B, L, D // 2, 2))  # B,L,D//2 x0+x1j
         # (x+yj)(a+bj)=xa-yb+(xb+ya)j=>(xcost-ysint)+(xsint+ycost)j
-        x_ = x_ * freqs_cis  # 执行position-wise复数乘积运算
+        x_ = x_ * theta  # 执行position-wise复数乘积运算
         # (a+bj)->[a, b] x0cost0-x1sint0,x0sint0+x1cost0,x2cost1-x3sint1,x2sint1+x3cost1
-        x_ = torch.view_as_real(x_).flatten(3)  # B,L,D
+        x_ = torch.view_as_real(x_).flatten(2)  # B,L,D
         return x_.type_as(x)
 
     def forward_palm(self, x):
@@ -104,7 +108,11 @@ class RoPE2D(nn.Module):
         super().__init__()
         assert dim % 4 == 0, f"dim={dim} must be divisible by 4!"
 
-        self.register_buffer("theta", base ** (-torch.arange(0, dim // 2, 2)[: (dim // 4)] / dim // 2))
+        valid_dim = dim // 2
+        self.register_buffer("theta", base ** (-torch.arange(0, valid_dim, 2)[: valid_dim // 2] / valid_dim))
+
+    def forward(self, image):
+        return self.forward_v2(image)
 
     def forward_v1(self, image):
         B, H, W, D = image.shape
@@ -117,7 +125,7 @@ class RoPE2D(nn.Module):
         x_theta = torch.polar(torch.ones_like(x_theta), x_theta).repeat(1, 1, W, 1)  # 1,H,W,D//4 cos(t0)+sin(t0)j
         y_theta = torch.polar(torch.ones_like(y_theta), y_theta).repeat(1, H, 1, 1)  # 1,H,W,D//4 cos(t0)+sin(t0)j
 
-        image = rearrange(image, 'b h w (d xy ab) -> b h w d xy ab', xy=2, ab=2)  # xy for space, ab for channel
+        image = rearrange(image, "b h w (d xy ab) -> b h w d xy ab", xy=2, ab=2)  # xy for space, ab for channel
         x_image, y_image = image.unbind(-2)  # B,H,W,D//4,2
 
         x_image_ = torch.view_as_complex(x_image.float())  # B,H,W,D//4 a+bj
@@ -143,7 +151,7 @@ class RoPE2D(nn.Module):
         y_theta = torch.polar(torch.ones_like(y_theta), y_theta).repeat(1, H, 1, 1)  # 1,H,W,D//4 cos(t0)+sin(t0)j
         xy_theta = torch.stack([x_theta, y_theta], dim=-1)
 
-        image = rearrange(image, 'b h w (d xy ab) -> b h w d xy ab', xy=2, ab=2)  # xy for space, ab for channel
+        image = rearrange(image, "b h w (d xy ab) -> b h w d xy ab", xy=2, ab=2)  # xy for space, ab for channel
 
         # the input is expected to have the last dimension of size 2. => [x, y]->(x+yj)
         image_ = torch.view_as_complex(image.float())  # B,H,W,D//4,2 xy,a+bj
@@ -154,7 +162,7 @@ class RoPE2D(nn.Module):
         return image_.type_as(image)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     torch.manual_seed(1024)
     torch.cuda.manual_seed(1024)
 
@@ -197,14 +205,14 @@ if __name__ == '__main__':
     torch.cuda.synchronize()
     print(f"forward_palm ({(time.perf_counter() - start) / 100}s): output mean: {x_palm.mean()}")
 
-    '''
+    """
     forward_v1 (0.0007928510010242462s): output mean: 0.00037511205300688744
     forward_v2 (0.0005496779992245137s): output mean: 0.00037511205300688744
     forward_v3 (0.0005035390006378293s): output mean: 0.00037511205300688744
     forward_v4 (0.0019484849995933472s): output mean: 0.0003751121403183788
     forward_llama (0.0001582980016246438s): output mean: 0.00037511205300688744
     forward_palm (0.004226168000604958s): output mean: 0.00037511205300688744
-    '''
+    """
 
     rope_2d = RoPE2D(dim=512).cuda()
     x = torch.randn(3, 64, 64, 512, dtype=torch.float32, device="cuda")
