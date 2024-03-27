@@ -13,7 +13,7 @@ class RoPE1D(nn.Module):
     def __init__(self, dim, base: float = 10000):
         super().__init__()
         assert dim % 2 == 0, f"dim={dim} must be an even number!"
-        self.register_buffer(name="theta", tensor=base ** (-2 * torch.arange(dim // 2) / dim).unsqueeze(0))
+        # self.register_buffer(name="theta", tensor=base ** (-2 * torch.arange(dim // 2) / dim).unsqueeze(0))
         # -2 * torch.arange(dim // 2) == torch.arange(0, dim, 2)[: (dim // 2)]
         self.register_buffer(name="theta", tensor=1 / (base ** (torch.arange(0, dim, 2)[: (dim // 2)] / dim)))
 
