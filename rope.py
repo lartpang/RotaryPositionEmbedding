@@ -136,7 +136,7 @@ class RoPE2D(nn.Module):
         y_image_ = y_image_ * y_theta  # B,H,W,D//4,2
         y_image_ = torch.view_as_real(y_image_)  # B,H,W,D//4,2
 
-        image_ = torch.stack([x_image_, y_image_], dim=-2)
+        image_ = torch.stack([x_image_, y_image_], dim=-2).flatten(-3)
         return image_.type_as(image)
 
     def forward_v2(self, image):
@@ -173,37 +173,37 @@ if __name__ == "__main__":
     for _ in range(100):
         x1 = rope_1d.forward_v1(x)
     torch.cuda.synchronize()
-    print(f"forward_v1 ({(time.perf_counter() - start) / 100}s): output mean: {x1.mean()}")
+    print(f"forward_v1 ({(time.perf_counter() - start) / 100}s): output ({x1.shape}) mean: {x1.mean()}")
 
     start = time.perf_counter()
     for _ in range(100):
         x2 = rope_1d.forward_v2(x)
     torch.cuda.synchronize()
-    print(f"forward_v2 ({(time.perf_counter() - start) / 100}s): output mean: {x2.mean()}")
+    print(f"forward_v2 ({(time.perf_counter() - start) / 100}s): output ({x2.shape}) mean: {x2.mean()}")
 
     start = time.perf_counter()
     for _ in range(100):
         x3 = rope_1d.forward_v3(x)
     torch.cuda.synchronize()
-    print(f"forward_v3 ({(time.perf_counter() - start) / 100}s): output mean: {x3.mean()}")
+    print(f"forward_v3 ({(time.perf_counter() - start) / 100}s): output ({x3.shape}) mean: {x3.mean()}")
 
     start = time.perf_counter()
     for _ in range(100):
         x4 = rope_1d.forward_v4(x)
     torch.cuda.synchronize()
-    print(f"forward_v4 ({(time.perf_counter() - start) / 100}s): output mean: {x4.mean()}")
+    print(f"forward_v4 ({(time.perf_counter() - start) / 100}s): output ({x4.shape}) mean: {x4.mean()}")
 
     start = time.perf_counter()
     for _ in range(100):
         x_llama = rope_1d.forward_llama(x)
     torch.cuda.synchronize()
-    print(f"forward_llama ({(time.perf_counter() - start) / 100}s): output mean: {x_llama.mean()}")
+    print(f"forward_llama ({(time.perf_counter() - start) / 100}s): output ({x_llama.shape}) mean: {x_llama.mean()}")
 
     start = time.perf_counter()
     for _ in range(100):
         x_palm = rope_1d.forward_palm(x)
     torch.cuda.synchronize()
-    print(f"forward_palm ({(time.perf_counter() - start) / 100}s): output mean: {x_palm.mean()}")
+    print(f"forward_palm ({(time.perf_counter() - start) / 100}s): output ({x_palm.shape}) mean: {x_palm.mean()}")
 
     """
     forward_v1 (0.0007928510010242462s): output mean: 0.00037511205300688744
@@ -221,13 +221,13 @@ if __name__ == "__main__":
     for _ in range(100):
         x1 = rope_2d.forward_v1(x)
     torch.cuda.synchronize()
-    print(f"forward_v1 ({(time.perf_counter() - start) / 100}s): output mean: {x1.mean()}")
+    print(f"forward_v1 ({(time.perf_counter() - start) / 100}s): output ({x1.shape}) mean: {x1.mean()}")
 
     start = time.perf_counter()
     for _ in range(100):
         x2 = rope_2d.forward_v2(x)
     torch.cuda.synchronize()
-    print(f"forward_v2 ({(time.perf_counter() - start) / 200}s): output mean: {x2.mean()}")
+    print(f"forward_v2 ({(time.perf_counter() - start) / 200}s): output ({x2.shape}) mean: {x2.mean()}")
 
     """
     forward_v1 (0.00029631400015205144s): output mean: 0.00021492868836503476
